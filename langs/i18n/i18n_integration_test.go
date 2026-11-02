@@ -14,6 +14,7 @@
 package i18n_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -219,4 +220,38 @@ hello: Greetings from pt!
 	runTest(filesTemplate)
 	runTest(strings.ReplaceAll(filesTemplate, "pt:", "PT:"))
 	runTest(strings.ReplaceAll(filesTemplate, "-- i18n/pt.yml --", "-- i18n/pT.yml --"))
+}
+
+// See issue 15518.
+func TestProjectTranslationWinsOverManyModuleTranslations(t *testing.T) {
+	t.Parallel()
+
+	// More than 12 translation files, so the sort that orders base tags before their
+	// subtag variants has to keep the project's file last of its group.
+	var files strings.Builder
+	files.WriteString(`-- hugo.toml --
+[module]
+`)
+	for i := 1; i <= 9; i++ {
+		fmt.Fprintf(&files, "[[module.imports]]\npath = 'theme%d'\n", i)
+	}
+	files.WriteString(`-- i18n/en.toml --
+[l1]
+other = 'project'
+`)
+	for i := 1; i <= 9; i++ {
+		fmt.Fprintf(&files, `-- themes/theme%[1]d/i18n/en.toml --
+[l1]
+other = 'theme%[1]d'
+-- themes/theme%[1]d/i18n/pt-br.toml --
+[l1]
+other = 'theme%[1]d-pt-br'
+`, i)
+	}
+	files.WriteString(`-- layouts/home.html --
+{{ i18n "l1" }}
+`)
+
+	b := hugolib.Test(t, files.String())
+	b.AssertFileContent("public/index.html", "project")
 }
